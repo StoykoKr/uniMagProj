@@ -1,0 +1,88 @@
+package city.proj.entity;
+
+import java.io.Serializable;
+
+public class PhysicalTrait implements Serializable {
+
+	private int id;
+	private String eyeColour;
+	private String gender;
+	private String hairColour;
+	private String skinTone;
+	private int height;
+
+	public PhysicalTrait(int id, String eyeColour, String gender, String hairColour, String skinTone, int height) {
+		super();
+		this.id = id;
+		this.eyeColour = eyeColour;
+		this.gender = gender;
+		this.hairColour = hairColour;
+		this.skinTone = skinTone;
+		this.height = height;
+	}
+
+	public PhysicalTrait(String eyeColour, String gender, String hairColour, String skinTone, int height) {
+		super();
+		this.eyeColour = eyeColour;
+		this.gender = gender;
+		this.hairColour = hairColour;
+		this.skinTone = skinTone;
+		this.height = height;
+	}
+
+	public int getId() {
+		return id;
+	}
+
+	public void setId(int id) {
+		this.id = id;
+	}
+
+	public String getEyeColour() {
+		return eyeColour;
+	}
+
+	public void setEyeColour(String eyeColour) {
+		this.eyeColour = eyeColour;
+	}
+
+	public String getGender() {
+		return gender;
+	}
+
+	public void setGender(String gender) {
+		this.gender = gender;
+	}
+
+	public String getHairColour() {
+		return hairColour;
+	}
+
+	public void setHairColour(String hairColour) {
+		this.hairColour = hairColour;
+	}
+
+	public String getSkinTone() {
+		return skinTone;
+	}
+
+	public void setSkinTone(String skinTone) {
+		this.skinTone = skinTone;
+	}
+
+	public int getHeight() {
+		return height;
+	}
+
+	public void setHeight(int height) {
+		this.height = height;
+	}
+
+	@Override
+	public String toString() {
+		// TODO Auto-generated method stub
+		return getHeight() + "cm tall " + getGender() + " with " + getEyeColour() + " eyes " + getHairColour()
+				+ " hair and " + getSkinTone() + " skin";
+	}
+
+}

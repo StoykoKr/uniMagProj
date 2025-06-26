@@ -1,0 +1,253 @@
+package city.proj.helpers;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+
+import city.proj.entity.CurrentStateSheet;
+import city.proj.entity.Person;
+import city.proj.entity.PhysicalTrait;
+import city.proj.entity.PsychologicalTrait;
+import city.proj.entity.SkillSheet;
+
+public class DBHandler {
+
+    private static final String DB_URL = "jdbc:h2:./citydb";
+    private static final String USER = "sa";
+    private static final String PASS = "";
+
+    private Connection conn;
+
+    public DBHandler() {
+        try {
+            conn = DriverManager.getConnection(DB_URL, USER, PASS);
+            createTables();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void createTables() throws SQLException {
+        try (Statement stmt = conn.createStatement()) {
+        	stmt.execute("CREATE TABLE IF NOT EXISTS skill_sheet ("
+        	        + "id INT AUTO_INCREMENT PRIMARY KEY, strength INT, agility INT, mind INT, intelligence INT,"
+        	        + "perception INT, charisma INT, stamina INT, endurance INT)");
+
+        	stmt.execute("CREATE TABLE IF NOT EXISTS physical_trait ("
+        	        + "id INT AUTO_INCREMENT PRIMARY KEY, eye_colour VARCHAR(50), gender VARCHAR(10), hair_colour VARCHAR(50),"
+        	        + "skin_tone VARCHAR(50), height INT)");
+
+        	stmt.execute("CREATE TABLE IF NOT EXISTS psych_trait ("
+        	        + "id INT AUTO_INCREMENT PRIMARY KEY,"
+        	        + "ambitious BOOLEAN, calculating BOOLEAN, calm BOOLEAN, careless BOOLEAN,"
+        	        + "charming BOOLEAN, deceiving BOOLEAN, depressed BOOLEAN, extrovert BOOLEAN,"
+        	        + "introvert BOOLEAN, friendly BOOLEAN, natural_leader BOOLEAN,"
+        	        + "psychopath BOOLEAN, ruthless BOOLEAN, entrepreneur BOOLEAN)");
+
+        	stmt.execute("CREATE TABLE IF NOT EXISTS person ("
+        	        + "id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255),"
+        	        + "skill_id INT, phys_id INT, psych_id INT,"
+        	        + "FOREIGN KEY (skill_id) REFERENCES skill_sheet(id),"
+        	        + "FOREIGN KEY (phys_id) REFERENCES physical_trait(id),"
+        	        + "FOREIGN KEY (psych_id) REFERENCES psych_trait(id))");
+        }
+    }
+
+    public void insertPerson(Person p) {
+        try {
+           
+            insertSkillSheet(p.getSkills());
+            insertPhysicalTrait(p.getPhysicalTraits());
+            insertPsychTrait(p.getPsychologicalTraits());
+
+            PreparedStatement stmt = conn.prepareStatement(
+                "INSERT INTO person (name, skill_id, phys_id, psych_id) VALUES (?, ?, ?, ?)",
+                Statement.RETURN_GENERATED_KEYS
+            );
+
+            stmt.setString(1, p.getName());
+            stmt.setInt(2, p.getSkills().getId());
+            stmt.setInt(3, p.getPhysicalTraits().getId());
+            stmt.setInt(4, p.getPsychologicalTraits().getId());
+            stmt.executeUpdate();
+
+            ResultSet rs = stmt.getGeneratedKeys();
+            if (rs.next()) {
+                p.setId(rs.getInt(1));
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    private void insertSkillSheet(SkillSheet skills) throws SQLException {
+    	String sql = "INSERT INTO skill_sheet (strength, agility, mind, intelligence, perception, charisma, stamina, endurance) "
+    	           + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
+    	try (PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+    	    stmt.setInt(1, skills.getStrength());
+    	    stmt.setInt(2, skills.getAgility());
+    	    stmt.setInt(3, skills.getMind());
+    	    stmt.setInt(4, skills.getIntelligence());
+    	    stmt.setInt(5, skills.getPerception());
+    	    stmt.setInt(6, skills.getCharisma());
+    	    stmt.setInt(7, skills.getStamina());
+    	    stmt.setInt(8, skills.getEndurance());
+    	    stmt.executeUpdate();
+
+    	    ResultSet rs = stmt.getGeneratedKeys();
+    	    if (rs.next()) {
+    	        skills.setId(rs.getInt(1));
+    	    }
+    	}
+    }
+    private void insertPsychTrait(PsychologicalTrait psych) throws SQLException {
+        String sql = "INSERT INTO psych_trait (ambitious, calculating, calm, careless, charming, deceiving, "
+                   + "depressed, extrovert, introvert, friendly, natural_leader, psychopath, ruthless, entrepreneur) "
+                   + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            for (int i = 0; i < Trait.values().length; i++) {
+                stmt.setBoolean(i + 1, psych.hasTrait(Trait.values()[i]));
+            }
+
+            stmt.executeUpdate();
+
+            ResultSet rs = stmt.getGeneratedKeys();
+            if (rs.next()) {
+                psych.setId(rs.getInt(1));
+            }
+        }
+    }
+    private void insertPhysicalTrait(PhysicalTrait pt) throws SQLException {
+        String sql = "INSERT INTO physical_trait (eye_colour, gender, hair_colour, skin_tone, height) "
+                   + "VALUES (?, ?, ?, ?, ?)";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setString(1, pt.getEyeColour());
+            stmt.setString(2, pt.getGender());
+            stmt.setString(3, pt.getHairColour());
+            stmt.setString(4, pt.getSkinTone());
+            stmt.setInt(5, pt.getHeight());
+            stmt.executeUpdate();
+
+            ResultSet rs = stmt.getGeneratedKeys();
+            if (rs.next()) {
+                pt.setId(rs.getInt(1));
+            }
+        }
+    }
+
+    public Person getPersonById(int id) {
+        String sql = "SELECT * FROM person WHERE id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            ResultSet rs = stmt.executeQuery();
+
+            if (rs.next()) {
+                String name = rs.getString("name");
+                int skillId = rs.getInt("skill_id");
+                int physId = rs.getInt("phys_id");
+                int psychId = rs.getInt("psych_id");
+
+                SkillSheet skills = getSkillSheetById(skillId);
+                PhysicalTrait pt = getPhysicalTraitById(physId);
+                PsychologicalTrait psych = getPsychTraitById(psychId);
+
+                return new Person(id, name, skills, new CurrentStateSheet(), pt, psych);
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+    private SkillSheet getSkillSheetById(int id) throws SQLException {
+        String sql = "SELECT * FROM skill_sheet WHERE id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return new SkillSheet(
+                    rs.getInt("id"),
+                    rs.getInt("strength"),
+                    rs.getInt("agility"),
+                    rs.getInt("mind"),
+                    rs.getInt("intelligence"),
+                    rs.getInt("perception"),
+                    rs.getInt("charisma"),
+                    rs.getInt("stamina"),
+                    rs.getInt("endurance")
+                );
+            }
+        }
+        return null;
+    }
+    private PhysicalTrait getPhysicalTraitById(int id) throws SQLException {
+        String sql = "SELECT * FROM physical_trait WHERE id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return new PhysicalTrait(
+                    rs.getInt("id"),
+                    rs.getString("eye_colour"),
+                    rs.getString("gender"),
+                    rs.getString("hair_colour"),
+                    rs.getString("skin_tone"),
+                    rs.getInt("height")
+                );
+            }
+        }
+        return null;
+    }
+    private PsychologicalTrait getPsychTraitById(int id) throws SQLException {
+        String sql = "SELECT * FROM psych_trait WHERE id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                PsychologicalTrait pt = new PsychologicalTrait();
+                pt.setId(id);
+                for (Trait t : Trait.values()) {
+                    if (rs.getBoolean(t.name().toLowerCase())) {
+                        pt.addTrait(t);
+                    }
+                }
+                return pt;
+            }
+        }
+        return null;
+    }
+    
+    public List<Person> getAllPerson() {
+        List<Person> people = new ArrayList<>();
+        String sql = "SELECT * FROM person";
+        try (PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                int id = rs.getInt("id");
+                String name = rs.getString("name");
+                int skillId = rs.getInt("skill_id");
+                int physId = rs.getInt("phys_id");
+                int psychId = rs.getInt("psych_id");
+
+                SkillSheet skills = getSkillSheetById(skillId);
+                PhysicalTrait pt = getPhysicalTraitById(physId);
+                PsychologicalTrait psych = getPsychTraitById(psychId);
+
+                Person p = new Person(id, name, skills, null, pt, psych);
+                people.add(p);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return people;
+    }
+}

@@ -1,0 +1,399 @@
+package city.proj;
+
+import java.awt.BorderLayout;
+import java.awt.CardLayout;
+import java.awt.GridLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.List;
+
+import javax.swing.BoxLayout;
+import javax.swing.DefaultListModel;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JList;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
+import javax.swing.JTextField;
+
+import city.proj.entity.Person;
+import city.proj.entity.Place;
+import city.proj.helpers.MapPanel;
+import city.proj.helpers.PlaceClickListener;
+import city.proj.helpers.Trait;
+
+public class CityAdminGUI extends JFrame implements PlaceClickListener {
+
+	private CityAdminAgent agent;
+
+	private JFrame frame;
+	private JPanel leftPanel; // CardLayout for modes
+	private JPanel rightPanel; // CardLayout for menu/details
+	private CardLayout leftCards;
+	private CardLayout rightCards;
+	private MapPanel mapPanel;
+	private JPanel menuPanel;
+	private JPanel detailsPanel;
+	private JLabel detailNameLabel;
+	private JLabel detailCoordsLabel;
+	private JLabel detailStaffedByLabel;
+	private JLabel detailJobSlotsLabel;
+	private JLabel detailShiftsLabel;
+	private JLabel detailProductionLabel;
+	private JLabel detailSalaryModLabel;
+	private JList<Person> detailPeopleHereList = new JList<Person>();
+	private JButton showCityBtn;
+	private JButton showStats;
+	private JButton createCityBtn;
+	private JButton advanceOneTurnBtn;
+	private JButton advanceOneDayBtn;
+	private JButton showPeopleBtn;
+	private JLabel modeListLabel;
+	private JPanel personDetailsPanel;
+	private JLabel personDetailNameLabel;
+	private JLabel personDetailCoordsLabel;
+	private JLabel personDetailPhysicalLabel;
+	private JLabel personDetailPsychologicalLabel;
+	private JLabel personDetailSkillsLabel;
+	private JLabel personDetailOccupationLabel;
+	private JLabel personDetailCurrentStateLabel;
+	private List<Person> namesHere;
+
+	private DefaultListModel<Person> personListModel = new DefaultListModel<>();
+	
+	public CityAdminGUI(CityAdminAgent agent) {
+		this.agent = agent;
+		agent.setOnCityGeneratedChange(() -> checkValidMenuButtons());
+		initialise();
+	}
+
+	@Override
+	public void onPlaceClicked(Place place) {
+		detailNameLabel.setText("Name: " + place.getName());
+		detailCoordsLabel.setText("X: " + place.getxCoords() + ", Y: " + place.getyCoords());
+		namesHere = agent.getNamesAtLocation(place.getName());
+		if (place.getJobSlots() != 0) {
+			detailStaffedByLabel.setText("Staffed by: " + place.getStaffedByJob().getName());
+			detailJobSlotsLabel.setText("Has job slots: " + place.getJobSlots());
+			detailShiftsLabel.setText("Has shifts: " + place.getShifts());
+			detailProductionLabel.setText("Produces each day: " + place.getProductionPerTurn());
+			detailSalaryModLabel.setText("Requirements and rewards modifier: " + place.getSalaryModifier());
+		} else {
+			detailStaffedByLabel.setText("Staffed by: ");
+			detailJobSlotsLabel.setText("Has job slots: ");
+			detailShiftsLabel.setText("Has shifts: ");
+			detailProductionLabel.setText("Produces each day: ");
+			detailSalaryModLabel.setText("Requirements and rewards modifier: ");
+			
+		}
+		//personListModel.clear();
+		//for (Person p : namesHere) {
+	//		personListModel.addElement(p);
+	//	}
+
+		rightCards.show(rightPanel, "DETAIL"); // Show detail view
+	}
+
+	private Person[] getPeopleInLocation(Place place) {
+
+		// check ontology for person currently at
+
+		return new Person[0];
+	}
+
+	private void checkValidMenuButtons() {
+		if (agent.cityIsGenerated) {
+			showCityBtn.setVisible(true);
+			showStats.setVisible(true);
+			advanceOneTurnBtn.setVisible(true);
+			advanceOneDayBtn.setVisible(true);
+			showPeopleBtn.setVisible(true);
+
+			createCityBtn.setVisible(false);
+		} else {
+			showCityBtn.setVisible(false);
+			advanceOneDayBtn.setVisible(false);
+			advanceOneTurnBtn.setVisible(false);
+			showStats.setVisible(false);
+			showPeopleBtn.setVisible(false);
+
+			createCityBtn.setVisible(true);
+		}
+	}
+
+	private void initialise() {
+		frame = new JFrame("City Simulation");
+		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		frame.setSize(1200, 900);
+
+		JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+		splitPane.setResizeWeight(0.5);
+		frame.add(splitPane);
+
+		leftCards = new CardLayout();
+		leftPanel = new JPanel(leftCards);
+		mapPanel = new MapPanel(agent);
+		mapPanel.setPlaceClickListener(this);
+		leftPanel.add(mapPanel, "MAP_VIEW");
+		leftPanel.add(createModeListView(), "STATS_VIEW");
+		leftPanel.add(mapSetupMode(), "CREATE_CITY");
+		leftPanel.add(createPeoplePanel(), "PEOPLE_VIEW");
+
+		rightCards = new CardLayout();
+		rightPanel = new JPanel(rightCards);
+		menuPanel = createMainMenuPanel();
+		rightPanel.add(menuPanel, "MENU");
+		detailsPanel = createDetailViewPanel();
+		rightPanel.add(detailsPanel, "DETAIL");
+		personDetailsPanel = createPersonDetailsPanel();
+		rightPanel.add(personDetailsPanel, "PERSON_DETAILS");
+
+		splitPane.setLeftComponent(leftPanel);
+		splitPane.setRightComponent(rightPanel);
+
+		rightCards.show(rightPanel, "MENU");
+		checkValidMenuButtons();
+		frame.setVisible(true);
+	}
+
+	private JPanel createPersonDetailsPanel() {
+		JPanel panel = new JPanel();
+		panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+
+		personDetailNameLabel = new JLabel("Name: ");
+		personDetailCoordsLabel = new JLabel("Coords: ");
+		personDetailPhysicalLabel = new JLabel("empty");
+		personDetailPsychologicalLabel = new JLabel("empty");
+		personDetailSkillsLabel = new JLabel("empty");
+		personDetailOccupationLabel = new JLabel("empty");
+		personDetailCurrentStateLabel = new JLabel("empty");
+
+		JButton backButton = new JButton("Back to Menu");
+		backButton.addActionListener((ActionEvent e) -> rightCards.show(rightPanel, "MENU"));
+
+		panel.add(personDetailNameLabel);
+		panel.add(personDetailCoordsLabel);
+		panel.add(personDetailPhysicalLabel);
+		panel.add(personDetailPsychologicalLabel);
+		panel.add(personDetailSkillsLabel);
+		panel.add(personDetailOccupationLabel);
+		panel.add(personDetailCurrentStateLabel);
+		panel.add(backButton);
+		return panel;
+	}
+
+	private JList<Person> allPersonList = new JList<>();
+
+	private JPanel createPeoplePanel() {
+		JPanel panel = new JPanel();
+		panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+		
+		allPersonList.setModel(personListModel);
+		allPersonList.setVisibleRowCount(10);
+		allPersonList.addMouseListener(new MouseAdapter() {
+			public void mouseClicked(MouseEvent e) {
+
+				Person selectedPerson = allPersonList.getSelectedValue();
+				if (selectedPerson != null) {
+					openPersonDetailView(selectedPerson);
+				}
+
+			}
+		});
+
+		JScrollPane scrollPane = new JScrollPane(allPersonList);
+
+		panel.add(scrollPane);
+		return panel;
+	}
+
+	private void openPersonDetailView(Person person) {
+		personDetailNameLabel.setText("Name: " + person.getName());
+		personDetailCoordsLabel.setText("Coords: currently unavailable");
+		personDetailPhysicalLabel .setText("Appearance: " + person.getPhysicalTraits().toString());
+		String traitString = "Psychological traits ";
+		for (Trait trait : person.getPsychologicalTraits().getTraits()) {
+			traitString.concat(trait.toString() + " ");
+		}
+		personDetailPsychologicalLabel.setText(traitString);
+		personDetailSkillsLabel .setText("Skill levels: " + person.getSkills().toString());
+		personDetailOccupationLabel .setText("not implemented");
+		personDetailCurrentStateLabel.setText("Current state: " + person.getCurrentState().toString());
+		rightCards.show(rightPanel, "PERSON_DETAILS");
+	}
+
+	private JPanel createMainMenuPanel() {
+		JPanel menu = new JPanel(new GridLayout(5, 2));
+		showCityBtn = new JButton("Show city");
+		showStats = new JButton("Show stats");
+		createCityBtn = new JButton("Create city view");
+		advanceOneTurnBtn = new JButton("Advance 1 turn");
+		advanceOneDayBtn = new JButton("Advance 1 day");
+		showPeopleBtn = new JButton("Show all people");
+
+		showCityBtn.addActionListener(e -> {
+
+			leftCards.show(leftPanel, "MAP_VIEW");
+			leftPanel.repaint();
+		});
+		showStats.addActionListener(e -> {
+			updateModeListView();
+			leftCards.show(leftPanel, "STATS_VIEW");
+			leftPanel.repaint();
+		});
+		createCityBtn.addActionListener(e -> {
+
+			leftCards.show(leftPanel, "CREATE_CITY");
+			leftPanel.repaint();
+		});
+
+		advanceOneTurnBtn.addActionListener(e -> {
+			agent.advanceOneTurn();
+		});
+		advanceOneDayBtn.addActionListener(e -> {
+
+			agent.advanceOneDay();
+		});
+		showPeopleBtn.addActionListener(e -> {
+			personListModel.clear();
+			for (Person p : agent.people) {
+				personListModel.addElement(p);
+				//System.out.println(p.getName()); // still useful
+			}
+			leftCards.show(leftPanel, "PEOPLE_VIEW");
+			leftPanel.repaint();
+		});
+
+		menu.add(showCityBtn);
+		menu.add(showStats);
+		menu.add(createCityBtn);
+		menu.add(advanceOneTurnBtn);
+		menu.add(advanceOneDayBtn);
+		menu.add(showPeopleBtn);
+		return menu;
+	}
+
+	private JPanel createModeListView() {
+		JPanel panel = new JPanel();
+		panel.setLayout(new BorderLayout());
+
+		modeListLabel = new JLabel();
+		panel.add(modeListLabel, BorderLayout.CENTER);
+		// JButton selectButton = new JButton("show right");
+
+		// Simulate selecting something to show detail view
+		// selectButton.addActionListener(e -> rightCards.show(rightPanel, "DETAIL"));
+
+		// panel.add(selectButton, BorderLayout.SOUTH);
+		return panel;
+	}
+
+	private JPanel mapSetupMode() {
+		JPanel mapSetup = new JPanel(new GridLayout(7, 2));
+
+		JLabel peopleLabel = new JLabel("Starting random people: ");
+		JTextField peopleTextField = new JTextField();
+		JLabel placesLabel = new JLabel("Starting random places: ");
+		JTextField placesTextField = new JTextField();
+		JLabel showPeopleLabel = new JLabel("Show saved people. ");
+		JButton showPeopleBtn = new JButton("Show database data.");
+		JList<Person> list = new JList<>();
+		JScrollPane scrollPane = new JScrollPane(list);
+		JButton initCity = new JButton("Create city!");
+
+		initCity.addActionListener(e -> {
+
+			if (peopleTextField.getText().length() > 0 && placesTextField.getText().length() > 0) {
+				int initPeople = 0;
+				int initPlaces = 0;
+
+				try {
+					initPeople = Integer.parseInt(peopleTextField.getText());
+					initPlaces = Integer.parseInt(placesTextField.getText());
+
+					agent.initialPeople = initPeople;
+					agent.initialPlaces = initPlaces;
+
+					agent.addBehaviour(agent.initCity);
+
+				} catch (NumberFormatException ex) {
+					peopleTextField.setText("Enter numbers only");
+					placesTextField.setText("Enter numbers only");
+				}
+
+			}
+
+		});
+
+		mapSetup.add(peopleLabel);
+		mapSetup.add(peopleTextField);
+		mapSetup.add(placesLabel);
+		mapSetup.add(placesTextField);
+		mapSetup.add(showPeopleLabel);
+		mapSetup.add(showPeopleBtn);
+		mapSetup.add(scrollPane);
+		mapSetup.add(initCity);
+
+		return mapSetup;
+
+	}
+
+	private void updateModeListView() {
+		if (agent.mapOfPlaces != null) {
+			modeListLabel.setText("Size: " + agent.mapOfPlaces.length);
+		} else {
+			modeListLabel.setText("is null");
+		}
+	}
+
+	private JPanel createDetailViewPanel() {
+		JPanel panel = new JPanel();
+		panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+
+		detailNameLabel = new JLabel("Name: ");
+		detailCoordsLabel = new JLabel("Coords: ");
+
+		detailStaffedByLabel = new JLabel("empty");
+		detailJobSlotsLabel = new JLabel("empty");
+		detailShiftsLabel = new JLabel("empty");
+		detailProductionLabel = new JLabel("empty");
+		detailSalaryModLabel = new JLabel("empty");
+
+		detailPeopleHereList.setModel(personListModel);
+		detailPeopleHereList.setVisibleRowCount(10);
+		detailPeopleHereList.addMouseListener(new MouseAdapter() {
+			public void mouseClicked(MouseEvent e) {
+
+				Person selectedPerson = detailPeopleHereList.getSelectedValue();
+				if (selectedPerson != null) {
+					openPersonDetailView(selectedPerson);
+				}
+
+			}
+		});
+
+		JScrollPane scrollPane = new JScrollPane(detailPeopleHereList);
+		
+		
+		JButton backButton = new JButton("Back to Menu");
+		backButton.addActionListener((ActionEvent e) -> rightCards.show(rightPanel, "MENU"));
+		
+		
+		
+		panel.add(detailNameLabel);
+		panel.add(detailCoordsLabel);
+		panel.add(detailStaffedByLabel);
+		panel.add(detailJobSlotsLabel);
+		panel.add(detailShiftsLabel);
+		panel.add(detailProductionLabel);
+		panel.add(detailSalaryModLabel);
+		panel.add(scrollPane);
+		panel.add(backButton);
+
+		return panel;
+	}
+
+}

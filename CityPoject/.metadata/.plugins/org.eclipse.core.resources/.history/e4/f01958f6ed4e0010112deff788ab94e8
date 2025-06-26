@@ -1,0 +1,72 @@
+package city.proj.helpers;
+
+import java.sql.*;
+import city.proj.entity.*;
+
+public class DBHandler {
+
+    private static final String DB_URL = "jdbc:h2:./citydb";
+    private static final String USER = "sa";
+    private static final String PASS = "";
+
+    private Connection conn;
+
+    public DBHandler() {
+        try {
+            conn = DriverManager.getConnection(DB_URL, USER, PASS);
+            createTables();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void createTables() throws SQLException {
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("CREATE TABLE IF NOT EXISTS skill_sheet ("
+                    + "id INT PRIMARY KEY, strength INT, agility INT, mind INT, intelligence INT,"
+                    + "perception INT, charisma INT, stamina INT, endurance INT)");
+
+            stmt.execute("CREATE TABLE IF NOT EXISTS physical_trait ("
+                    + "id INT PRIMARY KEY, eye_colour VARCHAR(50), gender VARCHAR(10), hair_colour VARCHAR(50),"
+                    + "skin_tone VARCHAR(50), height INT)");
+
+            stmt.execute("CREATE TABLE IF NOT EXISTS psych_trait ("
+                    + "id INT PRIMARY KEY,"
+                    + "ambitious BOOLEAN, calculating BOOLEAN, calm BOOLEAN, careless BOOLEAN,"
+                    + "charming BOOLEAN, deceiving BOOLEAN, depressed BOOLEAN, extrovert BOOLEAN,"
+                    + "introvert BOOLEAN, friendly BOOLEAN, natural_leader BOOLEAN,"
+                    + "psychopath BOOLEAN, ruthless BOOLEAN, entrepreneur BOOLEAN)");
+
+            stmt.execute("CREATE TABLE IF NOT EXISTS person ("
+                    + "id INT PRIMARY KEY, name VARCHAR(255),"
+                    + "skill_id INT, phys_id INT, psych_id INT,"
+                    + "FOREIGN KEY (skill_id) REFERENCES skill_sheet(id),"
+                    + "FOREIGN KEY (phys_id) REFERENCES physical_trait(id),"
+                    + "FOREIGN KEY (psych_id) REFERENCES psych_trait(id))");
+        }
+    }
+
+    // Example: Insert Person
+    public void insertPerson(Person p) {
+        try {
+            // First insert sub-objects
+            insertSkillSheet(p.getSkills());
+            insertPhysicalTrait(p.getPhysicalTraits());
+            insertPsychTrait(p.getPsychologicalTraits());
+
+            // Then the person
+            PreparedStatement stmt = conn.prepareStatement("INSERT INTO person (id, name, skill_id, phys_id, psych_id) VALUES (?, ?, ?, ?, ?)");
+            stmt.setInt(1, p.getId());
+            stmt.setString(2, p.getName());
+            stmt.setInt(3, p.getSkills().getId());
+            stmt.setInt(4, p.getPhysicalTraits().getId());
+            stmt.setInt(5, p.getPsychologicalTraits().getId());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Add insertSkillSheet, insertPhysicalTrait, insertPsychTrait
+    // Add getPersonById, updatePerson, deletePerson
+}

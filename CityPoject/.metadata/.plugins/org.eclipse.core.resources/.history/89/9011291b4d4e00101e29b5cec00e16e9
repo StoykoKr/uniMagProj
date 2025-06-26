@@ -1,0 +1,105 @@
+package city.proj.helpers;
+
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Graphics;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+
+import javax.swing.JPanel;
+
+import city.proj.CityAdminAgent;
+import city.proj.entity.Place;
+
+public class MapPanel extends JPanel {
+	private CityAdminAgent agent;
+	private PlaceClickListener placeClickListener;
+	private final int tileSize = 30; // Size of each square
+
+	public MapPanel(CityAdminAgent agent) {
+		this.agent = agent;
+		setPreferredSize(new Dimension(25 * tileSize, 25 * tileSize));
+		
+		this.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent e) {
+				int clickedX = e.getX() / tileSize;
+				int clickedY = e.getY() / tileSize;
+
+				if (agent.mapOfPlaces != null &&
+					clickedX >= 0 && clickedX < agent.mapOfPlaces.length &&
+					clickedY >= 0 && clickedY < agent.mapOfPlaces[0].length) {
+
+					Place clickedPlace = agent.mapOfPlaces[clickedX][clickedY];
+					if (clickedPlace != null) {
+						
+						placeClickListener.onPlaceClicked(clickedPlace);
+					}
+				}
+			}
+		});
+		
+	}
+
+
+	public void setPlaceClickListener(PlaceClickListener listener) {
+		this.placeClickListener = listener;
+	}
+	
+	@Override
+	protected void paintComponent(Graphics g) {
+		super.paintComponent(g);
+
+		if (agent.mapOfPlaces != null) {
+
+			for (int x = 0; x < agent.mapOfPlaces.length; x++) {
+				for (int y = 0; y < agent.mapOfPlaces[0].length; y++) {
+					Place place = agent.mapOfPlaces[x][y];
+					if (place != null) {
+						if (place.getName().split("_")[0].equals("street")) {
+							g.setColor(Color.GRAY);
+						} else if (place.getName().split("_")[0].equals("abandoned")) {
+							g.setColor(Color.DARK_GRAY);
+						} else if (place.getName().split("_")[0].equals("workshop")) {
+							g.setColor(Color.ORANGE);
+						} else if (place.getName().split("_")[0].equals("factory")) {
+							g.setColor(Color.RED);
+						} else if (place.getName().split("_")[0].equals("foodstore")) {
+							g.setColor(Color.CYAN);
+						} else if (place.getName().split("_")[0].equals("jewelrystore")) {
+							g.setColor(Color.MAGENTA);
+						} else if (place.getName().split("_")[0].equals("bank")) {
+							g.setColor(Color.YELLOW);
+						} else if (place.getName().split("_")[0].equals("researchinstitute")) {
+							g.setColor(Color.CYAN);
+						} else if (place.getName().split("_")[0].equals("shoppingmall")) {
+							g.setColor(Color.PINK);
+						} else if (place.getName().split("_")[0].equals("square")) {
+							g.setColor(Color.LIGHT_GRAY);
+						} else if (place.getName().split("_")[0].equals("park")) {
+							g.setColor(Color.GREEN);
+						} else if (place.getName().split("_")[0].equals("policedepartment")) {
+							g.setColor(Color.BLUE);
+						} else if (place.getName().split("_")[0].equals("casino")) {
+							g.setColor(new Color(122, 81, 39));
+						} else if (place.getName().split("_")[0].equals("office")) {
+							g.setColor(new Color(35, 70, 97));
+						} else if (place.getName().split("_")[0].equals("house")) {
+							g.setColor(new Color(245, 245, 220));
+						} else if (place.getName().split("_")[0].equals("apartment")) {
+							g.setColor(new Color(2, 33, 84));
+						}
+
+						int drawX = agent.mapOfPlaces[x][y].getxCoords() * tileSize;
+						int drawY = agent.mapOfPlaces[x][y].getyCoords() * tileSize;
+
+						g.fillRect(drawX, drawY, tileSize, tileSize);
+						 g.setColor(Color.BLACK); // border
+						g.drawRect(drawX, drawY, tileSize, tileSize);
+					}
+
+				}
+			}
+		}
+	}
+}

@@ -1,0 +1,43 @@
+package city.proj.behaviour;
+
+import jade.core.behaviours.Behaviour;
+
+public class TurnBehaviour extends Behaviour{
+    @Override
+    public void action() {
+        switch (currentState) {
+            case START_OF_TURN:
+                perceiveEnvironment();
+                currentState = DOING_MINOR_ACTIONS;
+                break;
+
+            case DOING_MINOR_ACTIONS:
+                if (minorActionsLeft > 0) {
+                    performMinorAction();
+                    minorActionsLeft--;
+                } else {
+                    currentState = DOING_MAJOR_ACTION;
+                }
+                break;
+
+            case DOING_MAJOR_ACTION:
+                if (!majorActionUsed) {
+                    performMajorAction();
+                    majorActionUsed = true;
+                }
+                currentState = DONE;
+                break;
+
+            case DONE:
+                reportTurnComplete(); // send INFORM to CityAdmin
+                currentState = WAITING;
+                done(); // end this behavior
+                break;
+        }
+    }
+
+    @Override
+    public boolean done() {
+        return currentState == WAITING;
+    }
+}

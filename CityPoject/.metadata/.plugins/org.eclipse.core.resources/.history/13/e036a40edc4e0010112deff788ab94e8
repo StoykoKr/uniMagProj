@@ -1,0 +1,933 @@
+package city.proj;
+
+import java.awt.Color;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Random;
+import java.util.Set;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import city.proj.entity.CurrentStateSheet;
+import city.proj.entity.Job;
+import city.proj.entity.Person;
+import city.proj.entity.PhysicalTrait;
+import city.proj.entity.Place;
+import city.proj.entity.PsychologicalTrait;
+import city.proj.entity.SkillSheet;
+import city.proj.helpers.PlaceTypes;
+import city.proj.helpers.Trait;
+import jade.core.AID;
+import jade.core.Agent;
+import jade.core.behaviours.CyclicBehaviour;
+import jade.core.behaviours.OneShotBehaviour;
+import jade.domain.DFService;
+import jade.domain.FIPAException;
+import jade.domain.FIPAAgentManagement.DFAgentDescription;
+import jade.domain.FIPAAgentManagement.ServiceDescription;
+import jade.lang.acl.ACLMessage;
+import jade.lang.acl.MessageTemplate;
+import jade.wrapper.AgentController;
+import jade.wrapper.StaleProxyException;
+
+public class CityAdminAgent extends Agent {
+
+	private CityOntology cityOntology;
+	public List<Person> people;
+	private List<Place> places;
+	public Place[][] mapOfPlaces;
+	public int initialPeople = 0;
+	public int initialPlaces = 0;
+	public boolean cityIsGenerated = false;
+	private int currentPlaceId = 0;
+	private int currentPersonId = 0;
+	private List<Job> activeJobs;
+	public Job cashier;
+	public Job banker;
+	public Job worker;
+	public Job scientist;
+	public Job policeman;
+	public Job dealer;
+	public Job officeWorker;
+	List<Place> allPlaces = new ArrayList<Place>();
+
+	private Runnable onCityGeneratedChange; // callback for stupid stuff
+
+	public void setOnCityGeneratedChange(Runnable callback) {
+		this.onCityGeneratedChange = callback;
+	}
+
+	public List<Person> getNamesAtLocation(String name) {
+		return cityOntology.getAllPeopleInPlace(name);
+	}
+
+	public List<Place> getSurraondingPlaces(String personName) {
+		return cityOntology.getAllPlacesAround(personName);
+	}
+
+	@Override
+	protected void setup() {
+
+		new CityAdminGUI(this);
+		cityOntology = new CityOntology(this);
+		DFAgentDescription dfd = new DFAgentDescription();
+		ServiceDescription sd = new ServiceDescription();
+
+		dfd.setName(getAID());
+		sd.setType("cityAdmin");
+		sd.setName("CityA");
+
+		dfd.addServices(sd);
+
+		try {
+			DFService.register(this, dfd);
+		} catch (FIPAException e) {
+			System.out.println(e.getMessage());
+		}
+
+		addBehaviour(new CyclicBehaviour() {
+			private MessageTemplate mt;
+
+			public void action() {
+				mt = MessageTemplate.MatchConversationId("new-friendship");
+
+				ACLMessage msg = myAgent.receive(mt);
+
+				if (msg != null) {
+					if (msg.getPerformative() == ACLMessage.INFORM) {
+
+						if ("new-friendship".equals(msg.getConversationId())) {
+
+							addFriendShip(msg.getSender().getLocalName(), msg.getContent());
+						}
+
+					}
+
+				}
+				mt = MessageTemplate.MatchConversationId("request-self-and-environment");
+				msg = myAgent.receive(mt);
+
+				if (msg != null && msg.getPerformative() == ACLMessage.REQUEST) {
+					AID requester = msg.getSender();
+					String inReplyTo = msg.getReplyWith(); // tag to reply with
+
+					String name = requester.getLocalName(); // assume this is the person name
+
+					try {
+						ObjectMapper mapper = new ObjectMapper();
+
+						Person[] knows = getFriends(name);
+						ACLMessage selfMsg = new ACLMessage(ACLMessage.INFORM);
+						selfMsg.addReceiver(requester);
+						selfMsg.setConversationId("request-self-and-environment");
+						selfMsg.setInReplyTo(inReplyTo);
+						selfMsg.setContent("KNOWS:" + mapper.writeValueAsString(knows));
+						myAgent.send(selfMsg);
+
+						Person[] nearbyPeople = getNearbyPeople(name);
+						ACLMessage peopleMsg = new ACLMessage(ACLMessage.INFORM);
+						peopleMsg.addReceiver(requester);
+						peopleMsg.setConversationId("request-self-and-environment");
+						peopleMsg.setInReplyTo(inReplyTo);
+						peopleMsg.setContent("PEOPLE:" + mapper.writeValueAsString(nearbyPeople));
+						myAgent.send(peopleMsg);
+
+						Place[] nearbyPlaces = getNearbyPlaces(name);
+						ACLMessage placesMsg = new ACLMessage(ACLMessage.INFORM);
+						placesMsg.addReceiver(requester);
+						placesMsg.setConversationId("request-self-and-environment");
+						placesMsg.setInReplyTo(inReplyTo);
+						placesMsg.setContent("PLACES:" + mapper.writeValueAsString(nearbyPlaces));
+						myAgent.send(placesMsg);
+
+						Person[] friends = getFriends(name);
+						ACLMessage friendsMsg = new ACLMessage(ACLMessage.INFORM);
+						friendsMsg.addReceiver(requester);
+						friendsMsg.setConversationId("request-self-and-environment");
+						friendsMsg.setInReplyTo(inReplyTo);
+						friendsMsg.setContent("FRIENDS:" + mapper.writeValueAsString(friends));
+						myAgent.send(friendsMsg);
+
+					} catch (JsonProcessingException e) {
+						e.printStackTrace();
+					}
+				}
+
+				mt = MessageTemplate.MatchConversationId("job-request");
+				msg = myAgent.receive(mt);
+				if (msg != null) {
+					try {
+						ObjectMapper mapper = new ObjectMapper();
+						String content = msg.getContent();
+
+						if (content.startsWith("PLACES:")) {
+							String json = content.substring(7);
+							List<Place> places = Arrays.asList(mapper.readValue(json, Place[].class));
+
+							Place job = findSuitableJob(places, msg.getSender().getLocalName());
+
+							if (job != null) {
+								ACLMessage reply = new ACLMessage(ACLMessage.INFORM);
+								reply.setConversationId("new-job");
+								reply.addReceiver(msg.getSender());
+								reply.setContent(mapper.writeValueAsString(job));
+								send(reply);
+							} else {
+
+							}
+						}
+					} catch (Exception e) {
+						System.err.println("Failed to process job request: " + e.getMessage());
+					}
+				}
+			}
+		});
+	}
+
+	private Place findSuitableJob(List<Place> places, String personName) {
+		  Person person = getByName(personName); 
+		    SkillSheet personSkills = person.getSkills();
+
+		    for (Place place : cityOntology.checkFreeSlots(places)) {
+		        SkillSheet requiredSkills = place.getStaffedByJob().getMinimumSkills();
+
+		        if (personSkills.satisfies(requiredSkills)) {		           
+		            return place;
+		        }
+		    }
+
+		    return null; 
+	}
+
+	private Person getByName(String name) {
+		for (Person person : people) {
+			if (person.getName().equals(name)) {
+				return person;
+			}
+		}
+		return null;
+	}
+
+	private Person[] getNearbyPeople(String name) {
+		var aa = cityOntology.getAllNearbyPeople(name);
+		return aa.toArray(new Person[aa.size()]);
+	}
+
+	private Place[] getNearbyPlaces(String name) {
+		var aa = cityOntology.getAllPlacesAround(name);
+		return aa.toArray(new Place[aa.size()]);
+	}
+
+	private Person[] getFriends(String name) {
+		var aa = cityOntology.getAllFriendsOf(name);
+		return aa.toArray(new Person[aa.size()]);
+	}
+
+	public int getRandomNumberUsingNextInt(int min, int max) {
+		Random random = new Random();
+		return random.nextInt(max - min) + min;
+	}
+
+	public int getNextPlaceId() {
+		return ++currentPlaceId;
+	}
+
+	public int getNextPersonId() {
+		return ++currentPersonId;
+	}
+
+	private void createMapWithPlaces(List<Place> listOfActivePlaces) {
+		int desiredSize = 1;
+		while (desiredSize * desiredSize < listOfActivePlaces.size()) {
+			desiredSize++;
+		}
+		List<Place> abandonedPlacesToBeAdded = new ArrayList<Place>();
+		for (int i = 0; i < desiredSize * desiredSize - listOfActivePlaces.size(); i++) {
+			Place newPlace = new Place();
+			newPlace.setName("Place_abandoned_" + getNextPlaceId());
+			newPlace.setJobSlots(0);
+			newPlace.setShifts(0);
+			newPlace.setSalaryModifier(0);
+			newPlace.setProductionPerTurn(0);
+			newPlace.setStaffedByJob(null);
+			abandonedPlacesToBeAdded.add(newPlace);
+		}
+		for (int i = 0; i < abandonedPlacesToBeAdded.size(); i++) {
+			listOfActivePlaces.add(abandonedPlacesToBeAdded.get(i));
+		}
+
+		int wholeGridWidth = desiredSize;
+		int wholeGridHeight = desiredSize;
+		int widthGap = 2;
+		int heightGap = 4;
+
+		if (desiredSize % widthGap != 0) {
+			wholeGridWidth++;
+		}
+		wholeGridWidth++;
+		wholeGridWidth += desiredSize / widthGap;
+
+		if (desiredSize % heightGap != 0) {
+			wholeGridHeight++;
+		}
+		wholeGridHeight++;
+		wholeGridHeight += desiredSize / heightGap;
+
+		Collections.shuffle(listOfActivePlaces);
+
+		mapOfPlaces = new Place[wholeGridWidth][wholeGridHeight];
+		allPlaces = new ArrayList<Place>();
+		for (int i = 0, placesCounter = 0; i < wholeGridWidth; i++) {
+			for (int j = 0; j < wholeGridHeight; j++) {
+
+				if (i == 0 || i % (widthGap + 1) == 0 || i == wholeGridWidth - 1 || j == 0 || j % (heightGap + 1) == 0
+						|| j == wholeGridHeight - 1) {
+					Place newStreetTile = new Place();
+					newStreetTile.setName("Place_street_" + getNextPlaceId());
+					newStreetTile.setJobSlots(0);
+					newStreetTile.setShifts(0);
+					newStreetTile.setSalaryModifier(0);
+					newStreetTile.setProductionPerTurn(0);
+					newStreetTile.setStaffedByJob(null);
+					newStreetTile.setxCoords(i);
+					newStreetTile.setyCoords(j);
+					cityOntology.addPlaceToOntology(newStreetTile);
+					mapOfPlaces[i][j] = newStreetTile;
+					allPlaces.add(newStreetTile);
+				} else if (placesCounter < listOfActivePlaces.size()) {
+					Place place = listOfActivePlaces.get(placesCounter);
+					place.setxCoords(i);
+					place.setyCoords(j);
+					cityOntology.addPlaceToOntology(place);
+					mapOfPlaces[i][j] = place;
+					placesCounter++;
+					allPlaces.add(place);
+				}
+			}
+		}
+		cityOntology.flushReasoner();
+		for (Place place1 : allPlaces) {
+			double x1 = place1.getxCoords();
+			double y1 = place1.getyCoords();
+
+			for (Place place2 : allPlaces) {
+				if (!place1.equals(place2)) {
+
+					double x2 = place2.getxCoords();
+					double y2 = place2.getyCoords();
+
+					if ((Math.abs(x1) - Math.abs(x2) == 0 || Math.abs(x1) - Math.abs(x2) == 1
+							|| Math.abs(x2) - Math.abs(x1) == 1)
+							&& (Math.abs(y1) - Math.abs(y2) == 0 || Math.abs(y1) - Math.abs(y2) == 1
+									|| Math.abs(y2) - Math.abs(y1) == 1)) {
+
+						cityOntology.addPlaceNearby(place1.getName(), place2.getName());
+
+					}
+
+				}
+			}
+		}
+
+	}
+
+	//
+	public void advanceOneTurn() {
+
+	}
+
+	public void advanceOneDay() {
+
+	}
+
+	private void addFriendShip(String nameA, String nameB) {
+		cityOntology.addFriendship(nameA, nameB);
+	}
+
+	public OneShotBehaviour initCity = new OneShotBehaviour() {
+
+		@Override
+		public void action() {
+			activeJobs = new ArrayList<Job>();
+			places = new ArrayList<Place>();
+			people = new ArrayList<Person>();
+			for (int i = 0; i < initialPeople; i++) {
+				generateRandomPerson(); // creates people and their residence. Also adds the people to ontology
+			}
+			createJobs();
+			for (int i = 0; i < initialPlaces; i++) {
+				generateRandomPlace(); // creates the non-residence places. Does NOT add to ontology as coords are yet
+										// to be calculated
+			}
+			createMapWithPlaces(places);
+			cityIsGenerated = true;
+			if (onCityGeneratedChange != null) {
+				onCityGeneratedChange.run();
+			}
+
+			for (Person person : people) {
+				Object[] args = new Object[] { person };
+				AgentController personAgent;
+				try {
+					personAgent = getContainerController().createNewAgent(person.getName(), PersonAgent.class.getName(),
+							args);
+					personAgent.start();
+				} catch (StaleProxyException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+
+			for (Place place : places) {
+				System.out.print(place.getName() + "|");
+				System.out.print(place.getJobSlots() + "|");
+				System.out.print(place.getProductionPerTurn() + "|");
+				System.out.print(place.getShifts() + "|");
+				System.out.println(place.getSalaryModifier() + "|");
+			}
+
+		}
+	};
+
+	public boolean satisfies(SkillSheet required) {
+		for (String skill : required.getSkillNames()) {
+			int requiredLevel = required.getSkillLevel(skill);
+			int personLevel = this.getSkillLevel(skill);
+
+			if (personLevel < requiredLevel) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private Person generateRandomPerson() {
+		Person newPerson = new Person();
+
+		newPerson.setName("Person" + (people.size() + 1));
+
+		String eyeColour = "none";
+		int roll = getRandomNumberUsingNextInt(0, 5);
+		switch (roll) {
+		case 0:
+			eyeColour = "Black";
+			break;
+		case 1:
+			eyeColour = "Blue";
+			break;
+		case 2:
+			eyeColour = "Brown";
+			break;
+		case 3:
+			eyeColour = "Hazel";
+			break;
+		case 4:
+			eyeColour = "Green";
+			break;
+		default:
+			throw new IllegalArgumentException("Unexpected value: " + roll);
+		}
+
+		String gender = "none";
+		roll = getRandomNumberUsingNextInt(0, 2);
+		switch (roll) {
+		case 0:
+			gender = "Male";
+			break;
+		case 1:
+			gender = "Female";
+			break;
+		default:
+			throw new IllegalArgumentException("Unexpected value: " + roll);
+		}
+
+		String hairColour = "none";
+		roll = getRandomNumberUsingNextInt(0, 6);
+		switch (roll) {
+		case 0:
+			hairColour = "Black";
+			break;
+		case 1:
+			hairColour = "Blonde";
+			break;
+		case 2:
+			hairColour = "Brown";
+			break;
+		case 3:
+			hairColour = "Red";
+			break;
+		case 4:
+			hairColour = "Gray";
+			break;
+		case 5:
+			hairColour = "Dark_brown";
+			break;
+		default:
+			throw new IllegalArgumentException("Unexpected value: " + roll);
+		}
+
+		String skinTone = "none";
+		roll = getRandomNumberUsingNextInt(0, 6);
+		switch (roll) {
+		case 0:
+			skinTone = "Pale";
+			break;
+		case 1:
+			skinTone = "White";
+			break;
+		case 2:
+			skinTone = "Medium";
+			break;
+		case 3:
+			skinTone = "Olive";
+			break;
+		case 4:
+			skinTone = "Brown";
+			break;
+		case 5:
+			skinTone = "Black";
+			break;
+		default:
+			throw new IllegalArgumentException("Unexpected value: " + roll);
+		}
+
+		int height = getRandomNumberUsingNextInt(150, 210);
+
+		PhysicalTrait physTraits = new PhysicalTrait(eyeColour, gender, hairColour, skinTone, height);
+		newPerson.setPhysicalTraits(physTraits);
+
+		int selected = getRandomNumberUsingNextInt(1, 4);
+		Set<Trait> traits = EnumSet.noneOf(Trait.class);
+		while (traits.size() < selected) {
+			Trait randomTrait = Trait.values()[getRandomNumberUsingNextInt(0, Trait.values().length)];
+
+			if (!traits.contains(randomTrait)) {
+				traits.add(randomTrait);
+			}
+			if (traits.contains(Trait.INTROVERT) && traits.contains(Trait.EXTROVERT)) {
+				traits.remove(Trait.INTROVERT);
+				traits.remove(Trait.EXTROVERT);
+			}
+
+		}
+		PsychologicalTrait psychTraits = new PsychologicalTrait();
+		psychTraits.setTraits(traits);
+		newPerson.setPsychologicalTraits(psychTraits);
+
+		CurrentStateSheet currentState = new CurrentStateSheet();
+		newPerson.setCurrentState(currentState);
+
+		SkillSheet personSkillSheet = new SkillSheet();
+
+		int skillRoll = 0;
+
+		// strength
+		int minRoll = 1;
+		int maxRoll = 11;
+		int finalRollMod = 0;
+
+		if (psychTraits.hasTrait(Trait.RUTHLESS)) {
+			minRoll += 2;
+			finalRollMod += 1;
+		}
+		if (psychTraits.hasTrait(Trait.AMBITIOUS)) {
+			minRoll += 1;
+		}
+		if (psychTraits.hasTrait(Trait.PSYCHOPATH)) {
+			minRoll += 1;
+			finalRollMod += 1;
+		}
+		if (psychTraits.hasTrait(Trait.CALM)) {
+			maxRoll -= 1;
+		}
+
+		skillRoll = getRandomNumberUsingNextInt(minRoll, maxRoll) + finalRollMod;
+		skillRoll = Math.max(1, Math.min(10, skillRoll));
+		personSkillSheet.setStrength(skillRoll);
+		// perception
+		minRoll = 1;
+		maxRoll = 11;
+		finalRollMod = 0;
+
+		if (psychTraits.hasTrait(Trait.CALCULATING)) {
+			minRoll += 2;
+			finalRollMod += 1;
+		}
+		if (psychTraits.hasTrait(Trait.CARELESS)) {
+			maxRoll -= 2;
+			finalRollMod -= 1;
+		}
+		if (psychTraits.hasTrait(Trait.DECEIVING)) {
+			minRoll += 1;
+			finalRollMod += 1;
+		}
+		if (psychTraits.hasTrait(Trait.CALM)) {
+			minRoll += 1;
+		}
+		if (psychTraits.hasTrait(Trait.NATURAL_LEADER)) {
+			minRoll += 1;
+		}
+
+		skillRoll = getRandomNumberUsingNextInt(minRoll, maxRoll) + finalRollMod;
+		skillRoll = Math.max(1, Math.min(10, skillRoll));
+		personSkillSheet.setPerception(skillRoll);
+		//
+		minRoll = 1;
+		maxRoll = 11;
+		finalRollMod = 0;
+
+		if (psychTraits.hasTrait(Trait.RUTHLESS)) {
+			minRoll += 1;
+		}
+		if (psychTraits.hasTrait(Trait.DEPRESSED)) {
+			maxRoll -= 2;
+			finalRollMod -= 1;
+		}
+		if (psychTraits.hasTrait(Trait.ENTREPRENEUR)) {
+			minRoll += 1;
+		}
+		if (psychTraits.hasTrait(Trait.NATURAL_LEADER)) {
+			finalRollMod += 1;
+		}
+
+		skillRoll = getRandomNumberUsingNextInt(minRoll, maxRoll) + finalRollMod;
+		skillRoll = Math.max(1, Math.min(10, skillRoll));
+		personSkillSheet.setEndurance(skillRoll);
+		//
+		minRoll = 1;
+		maxRoll = 11;
+		finalRollMod = 0;
+
+		if (psychTraits.hasTrait(Trait.AMBITIOUS)) {
+			minRoll += 1;
+		}
+		if (psychTraits.hasTrait(Trait.RUTHLESS)) {
+			minRoll += 1;
+		}
+		if (psychTraits.hasTrait(Trait.DEPRESSED)) {
+			maxRoll -= 2;
+			finalRollMod -= 1;
+		}
+		if (psychTraits.hasTrait(Trait.CALM)) {
+			finalRollMod += 1;
+		}
+
+		skillRoll = getRandomNumberUsingNextInt(minRoll, maxRoll) + finalRollMod;
+		skillRoll = Math.max(1, Math.min(10, skillRoll));
+		personSkillSheet.setStamina(skillRoll);
+		//
+		minRoll = 1;
+		maxRoll = 11;
+		finalRollMod = 0;
+
+		if (psychTraits.hasTrait(Trait.CHARMING)) {
+			minRoll += 2;
+			finalRollMod += 2;
+		}
+		if (psychTraits.hasTrait(Trait.EXTROVERT)) {
+			minRoll += 1;
+		}
+		if (psychTraits.hasTrait(Trait.INTROVERT)) {
+			maxRoll -= 1;
+			finalRollMod -= 1;
+		}
+		if (psychTraits.hasTrait(Trait.FRIENDLY)) {
+			minRoll += 1;
+		}
+		if (psychTraits.hasTrait(Trait.PSYCHOPATH)) {
+			finalRollMod -= 1;
+		}
+
+		skillRoll = getRandomNumberUsingNextInt(minRoll, maxRoll) + finalRollMod;
+		skillRoll = Math.max(1, Math.min(10, skillRoll));
+		personSkillSheet.setCharisma(skillRoll);
+		//
+		minRoll = 1;
+		maxRoll = 11;
+		finalRollMod = 0;
+
+		if (psychTraits.hasTrait(Trait.CALCULATING)) {
+			minRoll += 2;
+			finalRollMod += 1;
+		}
+		if (psychTraits.hasTrait(Trait.DEPRESSED)) {
+			finalRollMod -= 1;
+		}
+		if (psychTraits.hasTrait(Trait.DECEIVING)) {
+			minRoll += 1;
+		}
+		if (psychTraits.hasTrait(Trait.AMBITIOUS)) {
+			finalRollMod += 1;
+		}
+
+		skillRoll = getRandomNumberUsingNextInt(minRoll, maxRoll) + finalRollMod;
+		skillRoll = Math.max(1, Math.min(10, skillRoll));
+		personSkillSheet.setIntelligence(skillRoll);
+		//
+		minRoll = 1;
+		maxRoll = 11;
+		finalRollMod = 0;
+
+		if (psychTraits.hasTrait(Trait.DEPRESSED)) {
+			finalRollMod -= 1;
+			maxRoll -= 1;
+		}
+		if (psychTraits.hasTrait(Trait.CALCULATING)) {
+			minRoll += 2;
+		}
+		if (psychTraits.hasTrait(Trait.CALM)) {
+			finalRollMod += 1;
+		}
+		if (psychTraits.hasTrait(Trait.PSYCHOPATH)) {
+			finalRollMod += 1;
+		}
+
+		skillRoll = getRandomNumberUsingNextInt(minRoll, maxRoll) + finalRollMod;
+		skillRoll = Math.max(1, Math.min(10, skillRoll));
+		personSkillSheet.setMind(skillRoll);
+		//
+		minRoll = 1;
+		maxRoll = 11;
+		finalRollMod = 0;
+
+		if (psychTraits.hasTrait(Trait.AMBITIOUS)) {
+			minRoll += 1;
+		}
+		if (psychTraits.hasTrait(Trait.CARELESS)) {
+			finalRollMod -= 1;
+		}
+		if (psychTraits.hasTrait(Trait.CALM)) {
+			maxRoll -= 1;
+		}
+		if (psychTraits.hasTrait(Trait.PSYCHOPATH)) {
+			minRoll += 1;
+			finalRollMod += 1;
+		}
+		if (psychTraits.hasTrait(Trait.EXTROVERT)) {
+			minRoll += 1;
+		}
+
+		skillRoll = getRandomNumberUsingNextInt(minRoll, maxRoll) + finalRollMod;
+		skillRoll = Math.max(1, Math.min(10, skillRoll));
+		personSkillSheet.setAgility(skillRoll);
+		//
+		newPerson.setSkills(personSkillSheet);
+
+		people.add(newPerson);
+		Place placeOfResidence = cityOntology.addPersonToOntology(newPerson);// addPersonToOnto returns the Place of
+																				// residence
+		if (!places.contains(placeOfResidence)) {
+			places.add(placeOfResidence);
+		}
+		cityOntology.addisLocatedAt(newPerson.getName(), placeOfResidence.getName());
+
+		return newPerson;
+	}
+
+	private void createJobs() {
+		if (activeJobs.isEmpty()) {
+
+			cashier = new Job();
+			cashier.setName("Cashier");
+			cashier.setSalary(getRandomNumberUsingNextInt(120, 175));
+			SkillSheet cashierSkillSheet = new SkillSheet();
+			cashierSkillSheet.setCharisma(getRandomNumberUsingNextInt(1, 4));
+			cashierSkillSheet.setIntelligence(getRandomNumberUsingNextInt(1, 4));
+			cashierSkillSheet.setStamina(getRandomNumberUsingNextInt(1, 4));
+			cashierSkillSheet.setMind(getRandomNumberUsingNextInt(1, 4));
+			cashier.setMinimumSkills(cashierSkillSheet);
+			activeJobs.add(cashier);
+			cityOntology.addJobToOntology(cashier);
+
+			worker = new Job();
+			worker.setName("Worker");
+			worker.setSalary(getRandomNumberUsingNextInt(120, 175));
+			SkillSheet workerSkillSheet = new SkillSheet();
+			workerSkillSheet.setEndurance(getRandomNumberUsingNextInt(1, 4));
+			workerSkillSheet.setStrength(getRandomNumberUsingNextInt(1, 4));
+			workerSkillSheet.setStamina(getRandomNumberUsingNextInt(1, 4));
+			workerSkillSheet.setPerception(getRandomNumberUsingNextInt(1, 4));
+			worker.setMinimumSkills(workerSkillSheet);
+			activeJobs.add(worker);
+			cityOntology.addJobToOntology(worker);
+
+			banker = new Job();
+			banker.setName("Banker");
+			banker.setSalary(getRandomNumberUsingNextInt(350, 800));
+			SkillSheet bankerSkillSheet = new SkillSheet();
+			bankerSkillSheet.setPerception(getRandomNumberUsingNextInt(2, 6));
+			bankerSkillSheet.setCharisma(getRandomNumberUsingNextInt(2, 6));
+			bankerSkillSheet.setIntelligence(getRandomNumberUsingNextInt(4, 7));
+			bankerSkillSheet.setMind(getRandomNumberUsingNextInt(4, 7));
+			banker.setMinimumSkills(bankerSkillSheet);
+			activeJobs.add(banker);
+			cityOntology.addJobToOntology(banker);
+
+			scientist = new Job();
+			scientist.setName("Scientist");
+			scientist.setSalary(getRandomNumberUsingNextInt(400, 600));
+			SkillSheet scientistSkillSheet = new SkillSheet();
+			scientistSkillSheet.setIntelligence(getRandomNumberUsingNextInt(5, 7));
+			scientistSkillSheet.setMind(getRandomNumberUsingNextInt(5, 7));
+			scientist.setMinimumSkills(scientistSkillSheet);
+			activeJobs.add(scientist);
+			cityOntology.addJobToOntology(scientist);
+
+			policeman = new Job();
+			policeman.setName("Policeman");
+			policeman.setSalary(getRandomNumberUsingNextInt(250, 500));
+			SkillSheet policemanSkillSheet = new SkillSheet();
+			policemanSkillSheet.setAgility(getRandomNumberUsingNextInt(3, 6));
+			policemanSkillSheet.setEndurance(getRandomNumberUsingNextInt(3, 6));
+			policemanSkillSheet.setPerception(getRandomNumberUsingNextInt(3, 6));
+			policemanSkillSheet.setStamina(getRandomNumberUsingNextInt(4, 7));
+			policemanSkillSheet.setStrength(getRandomNumberUsingNextInt(4, 7));
+			policeman.setMinimumSkills(policemanSkillSheet);
+			activeJobs.add(policeman);
+			cityOntology.addJobToOntology(policeman);
+
+			dealer = new Job();
+			dealer.setName("Dealer");
+			dealer.setSalary(getRandomNumberUsingNextInt(200, 350));
+			SkillSheet dealerSkillSheet = new SkillSheet();
+			dealerSkillSheet.setPerception(getRandomNumberUsingNextInt(2, 5));
+			dealerSkillSheet.setStamina(getRandomNumberUsingNextInt(2, 5));
+			dealerSkillSheet.setCharisma(getRandomNumberUsingNextInt(3, 7));
+			dealerSkillSheet.setIntelligence(getRandomNumberUsingNextInt(2, 5));
+			dealer.setMinimumSkills(dealerSkillSheet);
+			activeJobs.add(dealer);
+			cityOntology.addJobToOntology(dealer);
+
+			officeWorker = new Job();
+			officeWorker.setName("OfficeWorker");
+			officeWorker.setSalary(getRandomNumberUsingNextInt(100, 250));
+			SkillSheet officeWorkerSkillSheet = new SkillSheet();
+			officeWorkerSkillSheet.setMind(getRandomNumberUsingNextInt(1, 4));
+			officeWorkerSkillSheet.setIntelligence(getRandomNumberUsingNextInt(1, 4));
+
+			officeWorker.setMinimumSkills(officeWorkerSkillSheet);
+			activeJobs.add(officeWorker);
+			cityOntology.addJobToOntology(officeWorker);
+
+		}
+	}
+
+	private Place generateRandomPlace() {
+		Place newPlace = new Place();
+
+		int rollType = getRandomNumberUsingNextInt(0, PlaceTypes.values().length - 3);
+		switch (rollType) {
+		case 0:
+			newPlace.setName("Place_workshop_" + getNextPlaceId());
+			newPlace.setJobSlots(getRandomNumberUsingNextInt(1, 4));
+			newPlace.setShifts(getRandomNumberUsingNextInt(1, 3));
+			newPlace.setSalaryModifier(getRandomNumberUsingNextInt(10, 25) / 10.0);
+			newPlace.setProductionPerTurn(getRandomNumberUsingNextInt(1000, 2000));
+			newPlace.setStaffedByJob(worker);
+
+			break;
+		case 1:
+			newPlace.setName("Place_factory_" + getNextPlaceId());
+			newPlace.setJobSlots(getRandomNumberUsingNextInt(2, 6));
+			newPlace.setShifts(getRandomNumberUsingNextInt(1, 3));
+			newPlace.setSalaryModifier(getRandomNumberUsingNextInt(10, 15) / 10.0);
+			newPlace.setProductionPerTurn(getRandomNumberUsingNextInt(2000, 4000));
+			newPlace.setStaffedByJob(worker);
+			break;
+		case 2:
+			newPlace.setName("Place_foodstore_" + getNextPlaceId());
+			newPlace.setJobSlots(getRandomNumberUsingNextInt(1, 3));
+			newPlace.setShifts(getRandomNumberUsingNextInt(1, 4));
+			newPlace.setSalaryModifier(getRandomNumberUsingNextInt(10, 15) / 10.0);
+			newPlace.setProductionPerTurn(getRandomNumberUsingNextInt(1000, 1300));
+			newPlace.setStaffedByJob(cashier);
+			break;
+		case 3:
+			newPlace.setName("Place_jewelrystore_" + getNextPlaceId());
+			newPlace.setJobSlots(getRandomNumberUsingNextInt(1, 3));
+			newPlace.setShifts(getRandomNumberUsingNextInt(1, 2));
+			newPlace.setSalaryModifier(getRandomNumberUsingNextInt(20, 35) / 10.0);
+			newPlace.setProductionPerTurn(getRandomNumberUsingNextInt(2000, 2500));
+			newPlace.setStaffedByJob(cashier);
+			break;
+		case 4:
+			newPlace.setName("Place_bank_" + getNextPlaceId());
+			newPlace.setJobSlots(getRandomNumberUsingNextInt(1, 3));
+			newPlace.setShifts(getRandomNumberUsingNextInt(1, 2));
+			newPlace.setSalaryModifier(getRandomNumberUsingNextInt(10, 25) / 10.0);
+			newPlace.setProductionPerTurn(getRandomNumberUsingNextInt(4000, 8000));
+			newPlace.setStaffedByJob(banker);
+			break;
+		case 5:
+			newPlace.setName("Place_researchinstitute_" + getNextPlaceId());
+			newPlace.setJobSlots(getRandomNumberUsingNextInt(1, 4));
+			newPlace.setShifts(getRandomNumberUsingNextInt(1, 3));
+			newPlace.setSalaryModifier(getRandomNumberUsingNextInt(10, 35) / 10.0);
+			newPlace.setProductionPerTurn(getRandomNumberUsingNextInt(2500, 8000));
+			newPlace.setStaffedByJob(scientist);
+			break;
+		case 6:
+			newPlace.setName("Place_shoppingmall_" + getNextPlaceId());
+			newPlace.setJobSlots(getRandomNumberUsingNextInt(4, 12));
+			newPlace.setShifts(getRandomNumberUsingNextInt(1, 3));
+			newPlace.setSalaryModifier(getRandomNumberUsingNextInt(10, 15) / 10.0);
+			newPlace.setProductionPerTurn(getRandomNumberUsingNextInt(3000, 8000));
+			newPlace.setStaffedByJob(cashier);
+			break;
+		case 7:
+			newPlace.setName("Place_square_" + getNextPlaceId());
+			newPlace.setJobSlots(0);
+			newPlace.setShifts(0);
+			newPlace.setSalaryModifier(0);
+			newPlace.setProductionPerTurn(0);
+			newPlace.setStaffedByJob(null);
+			break;
+		case 8:
+			newPlace.setName("Place_park_" + getNextPlaceId());
+			newPlace.setJobSlots(0);
+			newPlace.setShifts(0);
+			newPlace.setSalaryModifier(0);
+			newPlace.setProductionPerTurn(0);
+			newPlace.setStaffedByJob(null);
+			break;
+		case 9:
+			newPlace.setName("Place_policedepartment_" + getNextPlaceId());
+			newPlace.setJobSlots(getRandomNumberUsingNextInt(1, 3));
+			newPlace.setShifts(getRandomNumberUsingNextInt(1, 4));
+			newPlace.setSalaryModifier(getRandomNumberUsingNextInt(10, 20) / 10.0);
+			newPlace.setProductionPerTurn(0);
+			newPlace.setStaffedByJob(policeman);
+			break;
+		case 10:
+			newPlace.setName("Place_casino_" + getNextPlaceId());
+			newPlace.setJobSlots(getRandomNumberUsingNextInt(1, 5));
+			newPlace.setShifts(getRandomNumberUsingNextInt(1, 4));
+			newPlace.setSalaryModifier(getRandomNumberUsingNextInt(10, 15) / 10.0);
+			newPlace.setProductionPerTurn(getRandomNumberUsingNextInt(2500, 6500));
+			newPlace.setStaffedByJob(dealer);
+			break;
+		case 11:
+			newPlace.setName("Place_office_" + getNextPlaceId());
+			newPlace.setJobSlots(getRandomNumberUsingNextInt(1, 6));
+			newPlace.setShifts(getRandomNumberUsingNextInt(1, 2));
+			newPlace.setSalaryModifier(getRandomNumberUsingNextInt(10, 20) / 10.0);
+			newPlace.setProductionPerTurn(getRandomNumberUsingNextInt(2000, 5000));
+			newPlace.setStaffedByJob(officeWorker);
+			break;
+
+		default:
+			throw new IllegalArgumentException("Unexpected value: " + rollType);
+		}
+
+		places.add(newPlace);
+
+		return newPlace;
+
+	}
+
+}

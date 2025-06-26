@@ -1,0 +1,5 @@
+package city.proj.helpers;
+
+public interface PlaceClickListener {
+	void onPlaceClicked(Place place);
+}

@@ -1,0 +1,609 @@
+package city.proj;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Random;
+
+import org.semanticweb.owlapi.model.IRI;
+import org.semanticweb.owlapi.model.OWLNamedIndividual;
+
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import city.proj.entity.Person;
+import city.proj.entity.Place;
+import city.proj.helpers.Trait;
+import city.proj.helpers.TurnState;
+import jade.core.AID;
+import jade.core.Agent;
+import jade.core.behaviours.Behaviour;
+import jade.core.behaviours.CyclicBehaviour;
+import jade.lang.acl.ACLMessage;
+import jade.lang.acl.MessageTemplate;
+import jade.util.leap.Map;
+
+public class PersonAgent extends Agent {
+
+	private Person person;
+	private TurnState currentState = TurnState.WAITING;
+	private int minorActionsLeft = 2;
+	private boolean majorActionUsed = false;
+	private AID sender;
+	private String senderName;
+	private Person[] peopleNearby;
+	private Place[] placesNearby;
+	private List<Place> knownPlaces = new ArrayList<Place>();
+	private List<Person> knownPeople = new ArrayList<Person>();
+	private List<Person> friends = new ArrayList<Person>();
+	private Place placeOfWork;
+
+	@Override
+	protected void setup() {
+		Object[] args = getArguments();
+		if (args != null && args.length == 1) {
+			this.person = (Person) args[0];
+
+		} else {
+			System.out.println("Missing parameters. Shutting down agent...");
+			doDelete();
+		}
+
+
+		addBehaviour(new CyclicBehaviour() {
+			private MessageTemplate mt;
+
+			public void action() {
+				mt = MessageTemplate.or(MessageTemplate.MatchConversationId("start-of-turn"),
+						MessageTemplate.or(MessageTemplate.MatchConversationId("receive-salary"),
+								MessageTemplate.MatchConversationId("new-job")));
+
+				ACLMessage msg = myAgent.receive(mt);
+
+				if (msg != null) {
+					if (msg.getPerformative() == ACLMessage.INFORM) {
+
+						if ("receive-salary".equals(msg.getConversationId())) {
+							try {
+								double salary = Double.parseDouble(msg.getContent());
+								person.getCurrentState().manipulateFinanceBy(salary);
+							} catch (NumberFormatException e) {
+								System.out.println("Invalid salary format: " + msg.getContent());
+							}
+						}
+						if ("start-of-turn".equals(msg.getConversationId())) {
+							if ("YOUR_TURN".equals(msg.getContent())) {
+								minorActionsLeft = 2;
+								majorActionUsed = false;
+								System.out.println("wo 0?");
+								currentState.TurnState.START_OF_TURN;
+								addBehaviour(new TurnBehaviour());
+							}
+						}
+						if ("new-job".equals(msg.getConversationId())) {
+							try {
+								ObjectMapper mapper = new ObjectMapper();
+								Place newJob = mapper.readValue(msg.getContent(), Place.class);
+
+								placeOfWork = newJob;
+								person.getCurrentState().manipulateStressBy(-50);
+
+							} catch (Exception e) {
+
+							}
+						}
+
+					}
+
+				}
+
+				mt = MessageTemplate.MatchConversationId("request-known-places");
+
+				msg = myAgent.receive(mt);
+				if (msg != null) {
+					ACLMessage reply = msg.createReply();
+
+					if (shouldShareWith(msg.getSender())) {
+						reply.setPerformative(ACLMessage.AGREE);
+						reply.setConversationId("request-known-places");
+						send(reply);
+
+						ACLMessage inform = msg.createReply();
+						inform.setPerformative(ACLMessage.INFORM);
+						inform.setConversationId("request-known-places");
+						inform.setInReplyTo(msg.getReplyWith());
+
+						ObjectMapper mapper = new ObjectMapper();
+						String json;
+						try {
+							json = mapper.writeValueAsString(knownPlaces.toArray());
+							inform.setContent(json);
+						} catch (JsonProcessingException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+
+						send(inform);
+
+					} else {
+						reply.setPerformative(ACLMessage.REFUSE);
+						reply.setConversationId("request-known-places");
+						reply.setContent("Denied");
+						send(reply);
+					}
+				}
+
+				mt = MessageTemplate.MatchConversationId("request-friendship");
+				msg = myAgent.receive(mt);
+				if (msg != null) {
+					boolean accepts = shouldBeFriendsWith(msg.getSender().getLocalName());
+
+					ACLMessage reply = msg.createReply();
+					reply.setConversationId("request-friendship");
+					reply.setInReplyTo(msg.getReplyWith());
+
+					if (accepts) {
+						reply.setPerformative(ACLMessage.AGREE);
+
+						addBehaviour(new RequestFriendshipBehaviour(msg.getSender()));
+					} else {
+						reply.setPerformative(ACLMessage.REFUSE);
+					}
+					send(reply);
+				}
+
+			}
+		});
+	}
+
+	private int getRandomNumberUsingNextInt(int min, int max) {
+		Random random = new Random();
+		return random.nextInt(max - min) + min;
+	}
+
+	private boolean shouldBeFriendsWith(String personName) {
+		for (Person person : knownPeople) {
+			if (person.getName().equals(personName)) {
+				double sumRollAdvantage = person.getSkills().getCharisma() + this.person.getSkills().getCharisma();
+				if (person.getPsychologicalTraits().hasTrait(Trait.FRIENDLY)
+						|| this.person.getPsychologicalTraits().hasTrait(Trait.FRIENDLY)) {
+					sumRollAdvantage *= 1.5;
+				}
+				if (person.getPsychologicalTraits().hasTrait(Trait.EXTROVERT)
+						|| this.person.getPsychologicalTraits().hasTrait(Trait.EXTROVERT)) {
+					sumRollAdvantage *= 1.25;
+				}
+				if (person.getPsychologicalTraits().hasTrait(Trait.INTROVERT)
+						|| this.person.getPsychologicalTraits().hasTrait(Trait.INTROVERT)) {
+					sumRollAdvantage *= 0.75;
+				}
+				if (getRandomNumberUsingNextInt(1, 20) + sumRollAdvantage > 20 + friends.size() * 2) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	private void askForMap() {
+
+		if (peopleNearby.length == 0) {
+			person.getCurrentState().manipulateStressBy(5);
+			return;
+		}
+
+		Person randomPerson = peopleNearby[(new Random().nextInt(peopleNearby.length))];
+
+		if (randomPerson.getName().equals(person.getName())) {
+			person.getCurrentState().manipulateStressBy(5);
+			return;
+		}
+
+		AID target = new AID(randomPerson.getName(), AID.ISLOCALNAME);
+		addBehaviour(new RequestKnownPlacesFromB(target));
+
+	}
+
+	private void attempFriendship() {
+		if (peopleNearby.length == 0) {
+			person.getCurrentState().manipulateStressBy(5);
+			return;
+		}
+
+		Person targetPerson = peopleNearby[(new Random().nextInt(peopleNearby.length))];
+
+		if (targetPerson.getName().equals(person.getName())) {
+			person.getCurrentState().manipulateStressBy(5);
+			return;
+		}
+
+		if (friends.contains(targetPerson)) {
+			person.getCurrentState().manipulateStressBy(-3);
+		} else {
+
+			AID target = new AID(targetPerson.getName(), AID.ISLOCALNAME);
+			addBehaviour(new RequestFriendshipBehaviour(target));
+		}
+	}
+
+	private void relax() {
+		if (getRandomNumberUsingNextInt(1, 11) > 3) {
+			person.getCurrentState().manipulateStressBy(-2);
+		} else {
+			person.getCurrentState().manipulateStressBy(1);
+		}
+	}
+
+	private void thinkOfWork() {
+		if (placeOfWork != null) {
+			person.getCurrentState().manipulateStressBy(-3);
+			return;
+		}
+
+		try {
+			ObjectMapper mapper = new ObjectMapper();
+			String placesJson = mapper.writeValueAsString(knownPlaces);
+
+			ACLMessage jobRequest = new ACLMessage(ACLMessage.REQUEST);
+			jobRequest.setConversationId("job-request");
+			jobRequest.setContent("PLACES:" + placesJson);
+			jobRequest.addReceiver(new AID("CityAdministrator", AID.ISLOCALNAME));
+
+			send(jobRequest);
+		} catch (Exception e) {
+
+		}
+	}
+
+	private boolean shouldShareWith(AID sender) {
+
+		if (getRandomNumberUsingNextInt(1, 20) > 15 - person.getSkills().getCharisma()) {
+			return true;
+		}
+
+		return false;
+	}
+
+	private void performMinorAction() {
+
+		int roll = getRandomNumberUsingNextInt(1, 101);
+		if (person.getCurrentState().getStress() > 50) {
+			if (roll > 85) {
+				attempFriendship();
+			} else if (roll > 65) {
+				askForMap();
+			} else if (roll > 25) {
+				relax();
+			} else {
+				thinkOfWork();
+			}
+
+		} else {
+			if (roll > 66) {
+				attempFriendship();
+			} else if (roll > 33) {
+				askForMap();
+			} else {
+				relax();
+			}
+		}
+		System.out.println("we 3/4");
+
+	}
+
+	private boolean goingToWork = false;
+
+	private void move() {
+
+		if (placesNearby == null || placesNearby.length == 0) {
+	        person.getCurrentState().manipulateStressBy(5); 
+	        return;
+	    }
+
+	    Place target = placesNearby[new Random().nextInt(placesNearby.length)];
+
+	    try {
+	        ACLMessage msg = new ACLMessage(ACLMessage.INFORM);
+	        msg.addReceiver(new AID("CityAdministrator", AID.ISLOCALNAME));
+	        msg.setConversationId("update-location");
+
+	        msg.setContent(target.getName()); 
+	        send(msg);
+	    } catch (Exception e) {
+	        e.printStackTrace();
+	    }
+	}
+
+	private void performMajorAction() {
+		move();
+		System.out.println("we 5");
+	}
+
+	private void reportTurnComplete() {
+		 ACLMessage msg = new ACLMessage(ACLMessage.INFORM);
+		    msg.setConversationId("turn-complete");
+		    msg.addReceiver(new AID("CityAdministrator", AID.ISLOCALNAME));
+		    msg.setContent(person.getName()); 
+		    send(msg);
+	}
+
+	private class TurnBehaviour extends Behaviour {
+		@Override
+		public void action() {
+			
+			switch (currentState) {
+			case START_OF_TURN:
+				System.out.println("we 1");
+				addBehaviour(new PerceiveEnvironmentBehaviour());
+				currentState = TurnState.DOING_MINOR_ACTIONS;
+				System.out.println("we 2");
+				break;
+
+			case DOING_MINOR_ACTIONS:
+				if (minorActionsLeft > 0) {
+					performMinorAction();
+					minorActionsLeft--;
+				} else {
+					currentState = TurnState.DOING_MAJOR_ACTION;
+				}
+				break;
+
+			case DOING_MAJOR_ACTION:
+				if (!majorActionUsed) {
+					performMajorAction();
+					majorActionUsed = true;
+				}
+				currentState = TurnState.DONE;
+				break;
+
+			case DONE:
+				reportTurnComplete(); 
+				currentState = TurnState.WAITING;
+				done(); 
+				break;
+				
+			}
+		}
+
+		@Override
+		public boolean done() {
+			return currentState == TurnState.WAITING;
+		}
+	}
+
+	private class RequestKnownPlacesFromB extends Behaviour {
+		private final AID target;
+		private int step = 0;
+		private MessageTemplate mt;
+		private Place[] receivedPlaces;
+
+		public RequestKnownPlacesFromB(AID targetAgent) {
+			this.target = targetAgent;
+		}
+
+		@Override
+		public void action() {
+			switch (step) {
+			case 0:
+				ACLMessage req = new ACLMessage(ACLMessage.REQUEST);
+				req.addReceiver(target);
+				req.setConversationId("request-known-places");
+				String replyWith = "req" + System.currentTimeMillis();
+				req.setReplyWith(replyWith);
+				req.setContent("Requesting places from the Mahala.");
+				send(req);
+
+				mt = MessageTemplate.and(MessageTemplate.MatchConversationId("request-known-places"),
+						MessageTemplate.MatchInReplyTo(replyWith));
+
+				step++;
+				break;
+
+			case 1:
+				ACLMessage reply = receive(mt);
+				if (reply != null) {
+					if (reply.getPerformative() == ACLMessage.AGREE) {
+
+						step++;
+					} else if (reply.getPerformative() == ACLMessage.REFUSE) {
+						step = 3;
+					}
+				}
+				break;
+
+			case 2:
+
+				ACLMessage dataMsg = receive(mt);
+				if (dataMsg != null && dataMsg.getPerformative() == ACLMessage.INFORM) {
+					ObjectMapper mapper = new ObjectMapper();
+					try {
+						receivedPlaces = mapper.readValue(dataMsg.getContent(), Place[].class);
+					} catch (JsonParseException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (JsonMappingException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+
+					step++;
+				}
+				break;
+			}
+		}
+
+		@Override
+		public boolean done() {
+			if (step == 3) {
+				updatePlacesKnowledgeWithMissingFrom(receivedPlaces);
+
+				return true;
+			} else {
+				return false;
+			}
+
+		}
+	}
+
+	private void updatePlacesKnowledgeWithMissingFrom(Place[] places) {
+		for (Place place : places) {
+			if (!knownPlaces.contains(place)) {
+				knownPlaces.add(place);
+			}
+		}
+	}
+
+	private class RequestFriendshipBehaviour extends Behaviour {
+		private final AID target;
+		private int step = 0;
+		private MessageTemplate mt;
+		private boolean finished = false;
+		private boolean accepted = false;
+
+		public RequestFriendshipBehaviour(AID target) {
+			this.target = target;
+		}
+
+		@Override
+		public void action() {
+			switch (step) {
+			case 0:
+				ACLMessage request = new ACLMessage(ACLMessage.REQUEST);
+				request.addReceiver(target);
+				request.setConversationId("request-friendship");
+				String replyWith = "frq" + System.currentTimeMillis();
+				request.setReplyWith(replyWith);
+				request.setContent("friends?");
+				send(request);
+
+				mt = MessageTemplate.and(MessageTemplate.MatchConversationId("request-friendship"),
+						MessageTemplate.MatchInReplyTo(replyWith));
+				step++;
+				break;
+
+			case 1:
+				ACLMessage reply = receive(mt);
+				if (reply != null) {
+					if (reply.getPerformative() == ACLMessage.AGREE) {
+						accepted = true;
+						step++;
+					} else if (reply.getPerformative() == ACLMessage.REFUSE) {
+						accepted = false;
+						step++;
+					}
+				}
+				break;
+
+			case 2:
+				finished = true;
+				break;
+			}
+		}
+
+		@Override
+		public boolean done() {
+			if (finished && accepted) {
+				updateFriendship();
+			}
+			return finished;
+		}
+
+		private void updateFriendship() {
+
+			ACLMessage informAdmin = new ACLMessage(ACLMessage.INFORM);
+			AID targetAdmin = new AID("CityAdministrator", AID.ISLOCALNAME);
+			informAdmin.addReceiver(targetAdmin);
+			informAdmin.setConversationId("new-friendship");
+			informAdmin.setContent(target.getLocalName());
+			send(informAdmin);
+		}
+	}
+
+	private class PerceiveEnvironmentBehaviour extends Behaviour {
+		private int step = 0;
+		private MessageTemplate mt;
+		private final List<ACLMessage> responses = new ArrayList<>();
+		private final String replyWith = "perceive" + System.currentTimeMillis();
+
+		@Override
+		public void onStart() {
+			ACLMessage request = new ACLMessage(ACLMessage.REQUEST);
+			AID admin = new AID("CityAdministrator", AID.ISLOCALNAME);
+			request.addReceiver(admin);
+			request.setConversationId("request-self-and-environment");
+			request.setContent("Tell me all");
+			request.setReplyWith(replyWith);
+			myAgent.send(request);
+
+			mt = MessageTemplate.and(MessageTemplate.MatchConversationId("request-self-and-environment"),
+					MessageTemplate.MatchInReplyTo(replyWith));
+		}
+
+		@Override
+		public void action() {
+			switch (step) {
+			case 0:
+				ACLMessage msg = myAgent.receive(mt);
+				if (msg != null) {
+					responses.add(msg);
+
+					if (responses.size() >= 3) {
+						step++;
+					}
+				} else {
+					block();
+				}
+				break;
+
+			case 1:
+				for (ACLMessage response : responses) {
+					String content = response.getContent();
+					try {
+						ObjectMapper mapper = new ObjectMapper();
+
+						if (content.startsWith("FRIENDS:")) {
+							var arr = mapper.readValue(content.substring(8), Person[].class);
+							friends.clear();
+							for (Person p : arr) {
+								friends.add(p);
+							}
+						} else if (content.startsWith("PEOPLE:")) {
+							peopleNearby = mapper.readValue(content.substring(7), Person[].class);
+
+							for (Person p : peopleNearby) {
+								if (!knownPeople.contains(p)) {
+									knownPeople.add(p);
+								}
+							}
+
+						} else if (content.startsWith("PLACES:")) {
+							placesNearby = mapper.readValue(content.substring(7), Place[].class);
+
+							for (Place pl : placesNearby) {
+								if (!knownPlaces.contains(pl)) {
+									knownPlaces.add(pl);
+								}
+							}
+						}
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+				}
+				step++;
+				break;
+			}
+		}
+
+		@Override
+		public boolean done() {
+			return step == 2;
+		}
+	}
+}

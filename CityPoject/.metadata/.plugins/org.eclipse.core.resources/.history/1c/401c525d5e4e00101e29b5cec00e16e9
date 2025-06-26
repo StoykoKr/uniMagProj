@@ -1,0 +1,87 @@
+package city.proj.entity;
+
+import java.io.Serializable;
+
+public class CurrentStateSheet implements Serializable {
+
+	private int id;
+	private int morality; // from 0 to 100, 50 being neutral. How willing someone is to be good or bad,
+							// help or kill
+	private int energy; // stamina sets maximum energy, actions expend energy, some regain it ex. rest.
+						// Energy is regenerated every turn based on stamina/3 rounded up
+	private int financialBalance; // money which will also be the end scoring
+	private int stress; // will affect actions
+	private int sleep; // will be from 0 to 100
+
+	public CurrentStateSheet(int id, int morality, int energy, int financialBalance, int stress, int sleep) {
+		super();
+		this.id = id;
+		this.morality = morality;
+		this.energy = energy;
+		this.financialBalance = financialBalance;
+		this.stress = stress;
+		this.sleep = sleep;
+	}
+
+	public CurrentStateSheet() {
+		this.morality = 50;
+		this.energy = 100;
+		this.financialBalance = 100;
+		this.stress = 0;
+		this.sleep = 100;
+	}
+
+	public int getSleep() {
+		return sleep;
+	}
+
+	public void setSleep(int sleep) {
+		this.sleep = sleep;
+	}
+
+	public int getId() {
+		return id;
+	}
+
+	public void setId(int id) {
+		this.id = id;
+	}
+
+	public int getMorality() {
+		return morality;
+	}
+
+	public void setMorality(int morality) {
+		this.morality = morality;
+	}
+
+	public int getEnergy() {
+		return energy;
+	}
+
+	public void setEnergy(int energy) {
+		this.energy = energy;
+	}
+
+	public int getFinancialBalance() {
+		return financialBalance;
+	}
+
+	public void setFinancialBalance(int financialBalance) {
+		this.financialBalance = financialBalance;
+	}
+
+	public int getStress() {
+		return stress;
+	}
+
+	public void setStress(int stress) {
+		this.stress = stress;
+	}
+
+	@Override
+	public String toString() {
+		// TODO Auto-generated method stub
+		return "Morality = " + getMorality() + " energy = " + getEnergy() + " finances = " + getFinancialBalance() + " sleep = " + getSleep() + " stress = " + getStress();
+	}
+}

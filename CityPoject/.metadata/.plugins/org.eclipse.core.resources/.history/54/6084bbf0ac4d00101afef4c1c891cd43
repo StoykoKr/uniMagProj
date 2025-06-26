@@ -1,0 +1,50 @@
+package city.proj.helpers;
+
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Graphics;
+
+import javax.swing.JPanel;
+
+import city.proj.entity.Place;
+
+public class MapPanel extends JPanel {
+    private final Place[][] mapOfPlaces;
+    private final int tileSize = 30; // Size of each square
+
+    public MapPanel(Place[][] mapOfPlaces) {
+        this.mapOfPlaces = mapOfPlaces;
+        int width = mapOfPlaces.length * tileSize;
+        int height = mapOfPlaces[0].length * tileSize;
+        setPreferredSize(new Dimension(width, height));
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+
+        // Draw tiles
+        for (int x = 0; x < mapOfPlaces.length; x++) {
+            for (int y = 0; y < mapOfPlaces[0].length; y++) {
+                Place place = mapOfPlaces[x][y];
+                if (place != null) {
+                    if(place.getName().split("_")[0] == "street"){
+                    	g.setColor(Color.GRAY);
+                    	
+                    }
+                    
+                    
+                } else {
+                    g.setColor(Color.BLACK); // default color
+                }
+
+                int drawX = x * tileSize;
+                int drawY = y * tileSize;
+
+                g.fillRect(drawX, drawY, tileSize, tileSize);
+                g.setColor(Color.BLACK); // border
+                g.drawRect(drawX, drawY, tileSize, tileSize);
+            }
+        }
+    }
+}

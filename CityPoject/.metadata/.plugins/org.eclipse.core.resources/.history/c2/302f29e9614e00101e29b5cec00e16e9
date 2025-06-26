@@ -1,0 +1,102 @@
+package city.proj.entity;
+
+import java.io.Serializable;
+import java.util.Objects;
+
+public class Place implements Serializable{
+
+	private int id;
+	private String name;
+	private int jobSlots;
+	private Job staffedByJob;
+	private double salaryModifier;
+	private int xCoords;
+	private int yCoords;
+	private float productionPerTurn;
+	private int shifts;
+	
+	public Place(int id, String name, int jobSlots, Job staffedByJob, double salaryModifier, float productionPerTurn,int shifts) {
+		super();
+		this.id = id;
+		this.name = name;
+		this.jobSlots = jobSlots;
+		this.staffedByJob = staffedByJob;
+		this.salaryModifier = salaryModifier;
+		this.productionPerTurn = productionPerTurn;
+		this.shifts = shifts;
+	}
+	public Place() {
+		
+	}
+	
+	public int getShifts() {
+		return shifts;
+	}
+
+	public void setShifts(int shifts) {
+		this.shifts = shifts;
+	}
+
+	public int getId() {
+		return id;
+	}
+	public void setId(int id) {
+		this.id = id;
+	}
+	public String getName() {
+		return name;
+	}
+	public void setName(String name) {
+		this.name = name;
+	}
+	public int getJobSlots() {
+		return jobSlots;
+	}
+	public void setJobSlots(int jobSlots) {
+		this.jobSlots = jobSlots;
+	}
+	public Job getStaffedByJob() {
+		return staffedByJob;
+	}
+	public void setStaffedByJob(Job staffedByJob) {
+		this.staffedByJob = staffedByJob;
+	}
+	public double getSalaryModifier() {
+		return salaryModifier;
+	}
+	public void setSalaryModifier(double salaryModifier) {
+		this.salaryModifier = salaryModifier;
+	}
+	public int getxCoords() {
+		return xCoords;
+	}
+	public void setxCoords(int xCoords) {
+		this.xCoords = xCoords;
+	}
+	public int getyCoords() {
+		return yCoords;
+	}
+	public void setyCoords(int yCoords) {
+		this.yCoords = yCoords;
+	}
+	public float getProductionPerTurn() {
+		return productionPerTurn;
+	}
+	public void setProductionPerTurn(float productionPerTurn) {
+		this.productionPerTurn = productionPerTurn;
+	}
+	
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		Place place = (Place) o;
+		return Objects.equals(name, place.name); // or whatever uniquely identifies a Place
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(name);
+	}
+	
+}

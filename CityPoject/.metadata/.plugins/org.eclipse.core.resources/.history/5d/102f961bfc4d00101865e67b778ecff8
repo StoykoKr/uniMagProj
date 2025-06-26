@@ -1,0 +1,5 @@
+package city.proj.behaviour;
+
+public class TurnBehaviour {
+
+}

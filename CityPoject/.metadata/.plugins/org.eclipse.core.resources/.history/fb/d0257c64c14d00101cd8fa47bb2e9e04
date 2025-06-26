@@ -1,0 +1,78 @@
+package city.proj.helpers;
+
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Graphics;
+
+import javax.swing.JPanel;
+
+import city.proj.CityAdminAgent;
+import city.proj.entity.Place;
+
+public class MapPanel extends JPanel {
+	private CityAdminAgent agent;
+
+	private final int tileSize = 30; // Size of each square
+
+	public MapPanel(CityAdminAgent agent) {
+		this.agent = agent;
+		setPreferredSize(new Dimension(15 * tileSize, 15 * tileSize));
+	}
+
+	@Override
+	protected void paintComponent(Graphics g) {
+		super.paintComponent(g);
+
+		if (agent.mapOfPlaces != null) {
+
+			for (int x = 0; x < agent.mapOfPlaces.length; x++) {
+				for (int y = 0; y < agent.mapOfPlaces[0].length; y++) {
+					Place place = agent.mapOfPlaces[x][y];
+					if (place != null) {
+						if (place.getName().split("_")[0].equals("street")) {
+							g.setColor(Color.GRAY);
+						} else if (place.getName().split("_")[0].equals("abandoned")) {
+							g.setColor(Color.DARK_GRAY);
+						} else if (place.getName().split("_")[0].equals("workshop")) {
+							g.setColor(Color.ORANGE);
+						} else if (place.getName().split("_")[0].equals("factory")) {
+							g.setColor(Color.RED);
+						} else if (place.getName().split("_")[0].equals("foodstore")) {
+							g.setColor(Color.CYAN);
+						} else if (place.getName().split("_")[0].equals("jewelrystore")) {
+							g.setColor(Color.MAGENTA);
+						} else if (place.getName().split("_")[0].equals("bank")) {
+							g.setColor(Color.YELLOW);
+						} else if (place.getName().split("_")[0].equals("researchinstitute")) {
+							g.setColor(Color.CYAN);
+						} else if (place.getName().split("_")[0].equals("shoppingmall")) {
+							g.setColor(Color.PINK);
+						} else if (place.getName().split("_")[0].equals("square")) {
+							g.setColor(Color.LIGHT_GRAY);
+						} else if (place.getName().split("_")[0].equals("park")) {
+							g.setColor(Color.GREEN);
+						} else if (place.getName().split("_")[0].equals("policedepartment")) {
+							g.setColor(Color.BLUE);
+						} else if (place.getName().split("_")[0].equals("casino")) {
+							g.setColor(new Color(122, 81, 39));
+						} else if (place.getName().split("_")[0].equals("office")) {
+							g.setColor(new Color(35, 70, 97));
+						} else if (place.getName().split("_")[0].equals("house")) {
+							g.setColor(new Color(245, 245, 220));
+						} else if (place.getName().split("_")[0].equals("apartment")) {
+							g.setColor(new Color(60, 66, 58));
+						}
+
+						int drawX = agent.mapOfPlaces[x][y].getxCoords() * tileSize;
+						int drawY = agent.mapOfPlaces[x][y].getyCoords() * tileSize;
+
+						g.fillRect(drawX, drawY, tileSize, tileSize);
+						// g.setColor(Color.BLACK); // border
+						g.drawRect(drawX, drawY, tileSize, tileSize);
+					}
+
+				}
+			}
+		}
+	}
+}
